@@ -1,0 +1,18 @@
+# Node dependencies and build products
+node_modules/
+dist/
+build/
+# Private variables (allow versioned template)
+.env
+.env.*
+!.env.example
+# AI caches and generated outputs
+.model-cache/
+.cache/
+server/eval-results.json
+# Logs and editor files
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
