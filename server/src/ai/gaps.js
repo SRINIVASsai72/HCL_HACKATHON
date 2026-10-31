@@ -40,7 +40,6 @@ function validVector(vector) {
   );
 }
 
-// Calculate projected growth for the selected horizon.
 function forecastGrowth(forecast, horizon) {
   if (!forecast) return 0;
 
@@ -62,8 +61,6 @@ function forecastGrowth(forecast, horizon) {
   return ((projected - actual) / actual) * 100;
 }
 
-// Load AI data once, so both public functions can
-// use the same readiness calculations.
 async function loadContext() {
   const [roles, skills, forecasts] = await Promise.all([
     Role.find().lean(),
@@ -88,15 +85,21 @@ async function loadContext() {
   }
 
   return {
-    roles: new Map(roles.map((r) => [id(r._id), r])),
-    skills: new Map(skills.map((s) => [id(s._id), s])),
+    roles: new Map(
+      roles.map((role) => [id(role._id), role])
+    ),
+    skills: new Map(
+      skills.map((skill) => [id(skill._id), skill])
+    ),
     forecasts: new Map(
-      forecasts.map((f) => [id(f.skillId), f])
+      forecasts.map((forecast) => [
+        id(forecast.skillId),
+        forecast,
+      ])
     ),
   };
 }
 
-// Combine role requirements without counting a skill twice.
 function addRequirement(map, requirement) {
   const key = id(requirement.skillId);
   const previous = map.get(key);
@@ -105,6 +108,7 @@ function addRequirement(map, requirement) {
     5,
     Math.max(1, Number(requirement.level))
   );
+
   const weight = Math.max(
     1,
     Number(requirement.weight) || 1
@@ -122,7 +126,6 @@ function addRequirement(map, requirement) {
   }
 }
 
-// Build current or future role requirements.
 function requirementsFor(role, context, future, horizon) {
   const requirements = new Map();
 
@@ -134,14 +137,13 @@ function requirementsFor(role, context, future, horizon) {
     return [...requirements.values()];
   }
 
-  // Include requirements explicitly marked as future skills.
   for (const item of role.futureSkills || []) {
     addRequirement(requirements, item);
   }
 
-  // Increase rapidly growing current skill requirements.
   for (const item of role.requiredSkills || []) {
     const key = id(item.skillId);
+
     const growth = forecastGrowth(
       context.forecasts.get(key),
       horizon
@@ -163,8 +165,6 @@ function requirementsFor(role, context, future, horizon) {
   return [...requirements.values()];
 }
 
-// Return the best genuine semantic match for a
-// missing required skill, if it passes the threshold.
 function semanticCredit(
   employeeSkills,
   requiredSkill,
@@ -178,7 +178,9 @@ function semanticCredit(
   let best = null;
 
   for (const item of employeeSkills) {
-    const ownedSkill = context.skills.get(id(item.skillId));
+    const ownedSkill = context.skills.get(
+      id(item.skillId)
+    );
 
     if (!validVector(ownedSkill?.embedding)) {
       continue;
@@ -195,25 +197,27 @@ function semanticCredit(
     ) {
       best = {
         skillName: ownedSkill.name,
-        level: item.level,
+        level: Number(item.level),
         similarity,
       };
     }
   }
 
-  if (!best) return null;
+  if (!best) {
+    return null;
+  }
 
   return {
     ...best,
     effective: Math.min(
       requiredLevel - 1,
-      Math.round(best.level * best.similarity * 0.5 * 10) /
-        10
+      Math.round(
+        best.level * best.similarity * 0.5 * 10
+      ) / 10
     ),
   };
 }
 
-// Core calculation shared by employee and HR reports.
 function calculateReadiness(
   employee,
   role,
@@ -236,6 +240,7 @@ function calculateReadiness(
   );
 
   const items = [];
+
   let weightedGap = 0;
   let weightedRequired = 0;
 
@@ -248,13 +253,12 @@ function calculateReadiness(
     const current = owned.get(key) || 0;
 
     let effective = current;
+
     let reason =
       current > 0
         ? "Employee has this skill"
         : "Required skill is missing";
 
-    // Semantic credit applies ONLY if the required
-    // skill itself is absent from the employee.
     if (current === 0) {
       const credit = semanticCredit(
         employee.skills || [],
@@ -265,6 +269,7 @@ function calculateReadiness(
 
       if (credit) {
         effective = credit.effective;
+
         reason =
           `Partial credit from ${credit.skillName} ` +
           `(measured cosine similarity: ` +
@@ -272,7 +277,11 @@ function calculateReadiness(
       }
     }
 
-    const gap = Math.max(0, required - effective);
+    const gap = Math.max(
+      0,
+      required - effective
+    );
+
     const growthPct = forecastGrowth(
       context.forecasts.get(key),
       horizon
@@ -297,10 +306,10 @@ function calculateReadiness(
   const readiness =
     weightedRequired === 0
       ? 1
-      : clamp(1 - weightedGap / weightedRequired);
+      : clamp(
+          1 - weightedGap / weightedRequired
+        );
 
-  // Sort by weighted urgency, increasing with
-  // positive demand growth.
   items.sort((a, b) => {
     const urgency = (item) =>
       item.gap *
@@ -313,8 +322,9 @@ function calculateReadiness(
     );
   });
 
-  // Only missing or insufficient skills are gaps.
-  const gaps = items.filter((item) => item.gap > 0);
+  const gaps = items.filter(
+    (item) => item.gap > 0
+  );
 
   return {
     readiness: round(readiness),
@@ -324,24 +334,31 @@ function calculateReadiness(
   };
 }
 
-// An additive explanation for the CURRENT readiness.
-// Each factor represents the fraction of required
-// weighted proficiency already covered.
 function readinessExplanation(result) {
   if (result.weightedRequired === 0) {
     return makeExplanation(
-      [{ name: "No role requirements", value: 1, weight: 1 }],
+      [
+        {
+          name: "No role requirements",
+          value: 1,
+          weight: 1,
+        },
+      ],
       "No required skills are defined; readiness is 100%."
     );
   }
 
-  const factors = result.allItems.map((item) => ({
-    name: item.skillName,
-    value: clamp(item.effective / item.required),
-    weight:
-      (item.required * item.weight) /
-      result.weightedRequired,
-  }));
+  const factors = result.allItems.map(
+    (item) => ({
+      name: item.skillName,
+      value: clamp(
+        item.effective / item.required
+      ),
+      weight:
+        (item.required * item.weight) /
+        result.weightedRequired,
+    })
+  );
 
   return makeExplanation(
     factors,
@@ -349,7 +366,12 @@ function readinessExplanation(result) {
   );
 }
 
-function evaluateEmployee(employee, role, context, horizon) {
+function evaluateEmployee(
+  employee,
+  role,
+  context,
+  horizon
+) {
   const current = calculateReadiness(
     employee,
     role,
@@ -370,13 +392,18 @@ function evaluateEmployee(employee, role, context, horizon) {
 }
 
 /**
- * FR-02: Individual current and future skill gaps.
+ * Get current and future skill gaps
+ * for an individual employee.
  */
 export async function getGaps(
   employeeId,
   { roleId, horizon = DEFAULT_HORIZON } = {}
 ) {
-  if (!isValidId(employeeId)) {
+  // FIX: Convert MongoDB ObjectId to a string
+  // before passing it to isValidId().
+  const employeeIdString = id(employeeId);
+
+  if (!isValidId(employeeIdString)) {
     throw new AppError(
       400,
       "BAD_REQUEST",
@@ -384,7 +411,11 @@ export async function getGaps(
     );
   }
 
-  if (roleId && !isValidId(roleId)) {
+  // FIX: Apply the same conversion to roleId.
+  if (
+    roleId &&
+    !isValidId(id(roleId))
+  ) {
     throw new AppError(
       400,
       "BAD_REQUEST",
@@ -392,10 +423,12 @@ export async function getGaps(
     );
   }
 
-  const selectedHorizon = checkHorizon(horizon);
+  const selectedHorizon = checkHorizon(
+    horizon
+  );
 
   const employee = await Employee.findById(
-    employeeId
+    employeeIdString
   ).lean();
 
   if (!employee) {
@@ -407,8 +440,14 @@ export async function getGaps(
   }
 
   const context = await loadContext();
-  const targetRoleId = id(roleId || employee.roleId);
-  const role = context.roles.get(targetRoleId);
+
+  const targetRoleId = id(
+    roleId || employee.roleId
+  );
+
+  const role = context.roles.get(
+    targetRoleId
+  );
 
   if (!role) {
     throw new AppError(
@@ -443,8 +482,8 @@ export async function getGaps(
 }
 
 /**
- * Aggregate workforce readiness for P3's HR report.
- * Reuses the same calculation as getGaps().
+ * Get overall workforce readiness.
+ * Used by P3's HR reports.
  */
 export async function getOrgReadiness() {
   const [context, employees] = await Promise.all([
@@ -460,9 +499,13 @@ export async function getOrgReadiness() {
   let evaluated = 0;
 
   for (const employee of employees) {
-    const role = context.roles.get(id(employee.roleId));
+    const role = context.roles.get(
+      id(employee.roleId)
+    );
 
-    if (!role) continue;
+    if (!role) {
+      continue;
+    }
 
     const result = evaluateEmployee(
       employee,
@@ -472,6 +515,7 @@ export async function getOrgReadiness() {
     );
 
     evaluated++;
+
     currentTotal += result.current.readiness;
     futureTotal += result.future.readiness;
 
@@ -485,9 +529,13 @@ export async function getOrgReadiness() {
       });
     }
 
-    const group = departmentMap.get(department);
+    const group = departmentMap.get(
+      department
+    );
+
     group.employees++;
-    group.totalReadiness += result.current.readiness;
+    group.totalReadiness +=
+      result.current.readiness;
 
     for (const gap of result.current.gaps) {
       gapCounts.set(
@@ -497,17 +545,24 @@ export async function getOrgReadiness() {
     }
   }
 
-  const departments = [...departmentMap.values()]
+  const departments = [
+    ...departmentMap.values(),
+  ]
     .map((group) => ({
       name: group.name,
       employees: group.employees,
       readiness: round(
-        group.totalReadiness / group.employees
+        group.totalReadiness /
+        group.employees
       ),
     }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
 
-  const topGaps = [...gapCounts.entries()]
+  const topGaps = [
+    ...gapCounts.entries(),
+  ]
     .map(([skillName, employees]) => ({
       skillName,
       employees,
