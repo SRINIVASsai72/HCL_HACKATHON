@@ -1,0 +1,35 @@
+
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+client/dist/
+
+# AI model cache
+.model-cache/
+.cache/
+server/.model-cache/
+
+# Generated evaluation results
+server/eval-results.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/

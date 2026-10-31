@@ -1,0 +1,30 @@
+{
+  "name": "skillsight-server",
+  "version": "1.0.0",
+  "description": "Backend for SkillSight AI Workforce Management Platform",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "seed": "node src/seed/seed.js",
+    "seed:small": "node src/seed/seed.js --small",
+    "ai:build": "node src/scripts/aiBuild.js",
+    "eval": "node src/scripts/evaluate.js",
+    "setup:data": "npm run seed && npm run ai:build",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^10.0.0",
+    "@huggingface/transformers": "^3.0.0",
+    "bcryptjs": "^3.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.0.0",
+    "express": "^5.0.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.0",
+    "mongoose": "^8.0.0",
+    "simple-statistics": "^7.0.0"
+  },
+  "license": "ISC"
+}
